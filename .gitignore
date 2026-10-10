@@ -1,23 +1,16 @@
-# Data
 data/raw/*
 data/processed/*
 data/interim/*
 !data/**/.gitkeep
 
-# Models
 models/*
 !models/.gitkeep
 
-# Python
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
 *.egg-info/
 .venv/
 venv/
-
-# MLflow
 mlruns/
-
-# Env
 .env
