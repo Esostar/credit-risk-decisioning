@@ -1,4 +1,9 @@
+import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
 import joblib
 import numpy as np
 import pandas as pd
@@ -9,12 +14,41 @@ import shap
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_curve, precision_recall_curve, roc_auc_score, average_precision_score
 
-ROOT = Path(__file__).resolve().parents[1]
 MODEL_PATH = ROOT / "models" / "credit_risk_v0.2.0.joblib"
 DATA_PATH = ROOT / "data" / "processed" / "CreditScoring_features.csv"
 TARGET = "SeriousDlqin2yrs"
+FEATURES = [
+    "RevolvingUtilizationOfUnsecuredLines", "age",
+    "NumberOfTime30-59DaysPastDueNotWorse", "DebtRatio", "MonthlyIncome",
+    "NumberOfOpenCreditLinesAndLoans", "NumberOfTimes90DaysLate",
+    "NumberRealEstateLoansOrLines", "NumberOfTime60-89DaysPastDueNotWorse",
+    "NumberOfDependents", "IncomePerPerson", "IsIncomeMissing",
+    "TotalPastDue", "HasPastDue", "SeverePastDue", "HighUtilization",
+    "HighDebtRatio", "AgeBin",
+]
+PAST_DUE = [
+    "NumberOfTime30-59DaysPastDueNotWorse",
+    "NumberOfTime60-89DaysPastDueNotWorse",
+    "NumberOfTimes90DaysLate",
+]
 
 st.set_page_config(page_title="Credit Risk Decisioning", layout="wide")
+
+
+def engineer_row(row: dict) -> pd.DataFrame:
+    df = pd.DataFrame([row])
+    if pd.notna(df.at[0, "MonthlyIncome"]):
+        df["IncomePerPerson"] = df["MonthlyIncome"] / (df["NumberOfDependents"].fillna(0) + 1)
+    else:
+        df["IncomePerPerson"] = np.nan
+    df["IsIncomeMissing"] = int(pd.isna(df.at[0, "MonthlyIncome"]))
+    df["TotalPastDue"] = df[PAST_DUE].fillna(0).sum(axis=1)
+    df["HasPastDue"] = (df["TotalPastDue"] > 0).astype(int)
+    df["SeverePastDue"] = (df["NumberOfTimes90DaysLate"].fillna(0) > 0).astype(int)
+    df["HighUtilization"] = (df["RevolvingUtilizationOfUnsecuredLines"] > 0.5).astype(int)
+    df["HighDebtRatio"] = (df["DebtRatio"] > 0.5).astype(int)
+    df["AgeBin"] = pd.cut(df["age"], bins=[0, 25, 35, 45, 55, 65, 120], labels=False)
+    return df[FEATURES]
 
 
 @st.cache_resource
@@ -160,8 +194,7 @@ with tab4:
             "NumberOfTime60-89DaysPastDueNotWorse": past_60_89,
             "NumberOfDependents": dependents,
         }
-        from src.api.main import _engineer
-        X_new = _engineer(row)
+        X_new = engineer_row(row)
         pd_val = float(model.predict_proba(X_new)[:, 1][0])
 
         if pd_val < threshold - 0.05:
