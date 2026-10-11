@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_curve, precision_recall_curve, roc_auc_score, average_precision_score
 
 ROOT = Path(__file__).resolve().parents[1]
-MODEL_PATH = ROOT / "models" / "credit_risk_v0.1.0.joblib"
+MODEL_PATH = ROOT / "models" / "credit_risk_v0.2.0.joblib"
 DATA_PATH = ROOT / "data" / "processed" / "CreditScoring_features.csv"
 TARGET = "SeriousDlqin2yrs"
 

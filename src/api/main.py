@@ -6,7 +6,7 @@ import shap
 from fastapi import FastAPI, HTTPException
 from src.api.schemas import Applicant, Decision
 
-MODEL_PATH = Path("models/credit_risk_v0.1.0.joblib")
+MODEL_PATH = Path("models/credit_risk_v0.2.0.joblib")
 ARTIFACT = joblib.load(MODEL_PATH)
 MODEL = ARTIFACT["model"]
 THRESHOLD = ARTIFACT["threshold"]
