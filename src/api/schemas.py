@@ -14,13 +14,14 @@ class Applicant(BaseModel):
     NumberOfTime60_89DaysPastDueNotWorse: int = Field(..., alias="NumberOfTime60-89DaysPastDueNotWorse", ge=0)
     NumberOfDependents: Optional[float] = None
 
-    class Config:
-        populate_by_name = True
+    model_config = {"populate_by_name": True}
 
 
 class Decision(BaseModel):
+    request_id: str
+    timestamp: str
     probability_of_default: float
-    decision: str          # "approve" | "review" | "reject"
+    decision: str
     threshold: float
     model_version: str
     reasons: list[dict]
