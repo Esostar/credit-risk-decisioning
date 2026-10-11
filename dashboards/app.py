@@ -17,6 +17,7 @@ from sklearn.metrics import roc_curve, precision_recall_curve, roc_auc_score, av
 MODEL_PATH = ROOT / "models" / "credit_risk_v0.2.0.joblib"
 DATA_PATH = ROOT / "data" / "processed" / "CreditScoring_features.csv"
 AUDIT_DB = ROOT / "data" / "audit" / "decisions.db"
+AUDIT_DEMO_DB = ROOT / "dashboards" / "assets" / "audit_demo.db"
 TARGET = "SeriousDlqin2yrs"
 PAST_DUE = [
     "NumberOfTime30-59DaysPastDueNotWorse",
@@ -54,19 +55,24 @@ def load_data():
 
 
 def load_audit(limit: int = 200) -> pd.DataFrame:
-    if not AUDIT_DB.exists():
-        return pd.DataFrame()
     import sqlite3
-    conn = sqlite3.connect(AUDIT_DB)
-    try:
-        df = pd.read_sql_query(
-            f"SELECT request_id, timestamp, model_version, probability_of_default, "
-            f"decision, threshold FROM scoring_log ORDER BY timestamp DESC LIMIT {int(limit)}",
-            conn,
-        )
-    finally:
-        conn.close()
-    return df
+    query = (
+        "SELECT request_id, timestamp, model_version, probability_of_default, "
+        "decision, threshold FROM scoring_log"
+    )
+    frames = []
+    for path in (AUDIT_DB, AUDIT_DEMO_DB):
+        if path.exists():
+            conn = sqlite3.connect(path)
+            try:
+                frames.append(pd.read_sql_query(query, conn))
+            finally:
+                conn.close()
+    if not frames:
+        return pd.DataFrame()
+    df = pd.concat(frames, ignore_index=True)
+    df = df.drop_duplicates(subset="request_id").sort_values("timestamp", ascending=False)
+    return df.head(int(limit)).reset_index(drop=True)
 
 
 artifact = load_artifact()
@@ -230,7 +236,7 @@ with tab4:
 
 with tab5:
     st.subheader("Decision Audit Trail")
-    st.caption("Every scoring decision recorded in `data/audit/decisions.db` on the server.")
+    st.caption("Every scoring decision recorded on the server. Falls back to a bundled demo DB when running on Streamlit Cloud.")
 
     audit_df = load_audit(limit=500)
 
