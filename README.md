@@ -1,5 +1,7 @@
 # Credit Risk Decisioning
 
+**Live demo:** https://credit-risk-decisioning-42aqunkforj5zxucgk6nql.streamlit.app/
+
 An end-to-end credit risk scoring system: data cleaning, feature engineering,
 LightGBM modeling with probability calibration, cost-based threshold selection,
 SHAP explainability, fairness auditing, a FastAPI scoring service, an
