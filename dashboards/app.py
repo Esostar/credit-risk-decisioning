@@ -16,16 +16,8 @@ from sklearn.metrics import roc_curve, precision_recall_curve, roc_auc_score, av
 
 MODEL_PATH = ROOT / "models" / "credit_risk_v0.2.0.joblib"
 DATA_PATH = ROOT / "data" / "processed" / "CreditScoring_features.csv"
+AUDIT_DB = ROOT / "data" / "audit" / "decisions.db"
 TARGET = "SeriousDlqin2yrs"
-FEATURES = [
-    "RevolvingUtilizationOfUnsecuredLines", "age",
-    "NumberOfTime30-59DaysPastDueNotWorse", "DebtRatio", "MonthlyIncome",
-    "NumberOfOpenCreditLinesAndLoans", "NumberOfTimes90DaysLate",
-    "NumberRealEstateLoansOrLines", "NumberOfTime60-89DaysPastDueNotWorse",
-    "NumberOfDependents", "IncomePerPerson", "IsIncomeMissing",
-    "TotalPastDue", "HasPastDue", "SeverePastDue", "HighUtilization",
-    "HighDebtRatio", "AgeBin",
-]
 PAST_DUE = [
     "NumberOfTime30-59DaysPastDueNotWorse",
     "NumberOfTime60-89DaysPastDueNotWorse",
@@ -48,7 +40,7 @@ def engineer_row(row: dict) -> pd.DataFrame:
     df["HighUtilization"] = (df["RevolvingUtilizationOfUnsecuredLines"] > 0.5).astype(int)
     df["HighDebtRatio"] = (df["DebtRatio"] > 0.5).astype(int)
     df["AgeBin"] = pd.cut(df["age"], bins=[0, 25, 35, 45, 55, 65, 120], labels=False)
-    return df[FEATURES]
+    return df[features]
 
 
 @st.cache_resource
@@ -59,6 +51,22 @@ def load_artifact():
 @st.cache_data
 def load_data():
     return pd.read_csv(DATA_PATH)
+
+
+def load_audit(limit: int = 200) -> pd.DataFrame:
+    if not AUDIT_DB.exists():
+        return pd.DataFrame()
+    import sqlite3
+    conn = sqlite3.connect(AUDIT_DB)
+    try:
+        df = pd.read_sql_query(
+            f"SELECT request_id, timestamp, model_version, probability_of_default, "
+            f"decision, threshold FROM scoring_log ORDER BY timestamp DESC LIMIT {int(limit)}",
+            conn,
+        )
+    finally:
+        conn.close()
+    return df
 
 
 artifact = load_artifact()
@@ -73,7 +81,9 @@ y = df[TARGET]
 st.title("Credit Risk Decisioning")
 st.caption(f"Model v{artifact['version']} | Decision threshold: {threshold}")
 
-tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Performance", "Explainability", "Score Applicant"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    ["Overview", "Performance", "Explainability", "Score Applicant", "Audit Log"]
+)
 
 with tab1:
     c1, c2, c3, c4 = st.columns(4)
@@ -217,3 +227,42 @@ with tab4:
                      color_continuous_scale=["green", "lightgrey", "red"])
         fig.update_layout(title="Why this decision?", showlegend=False, coloraxis_showscale=False)
         st.plotly_chart(fig, use_container_width=True)
+
+with tab5:
+    st.subheader("Decision Audit Trail")
+    st.caption("Every scoring decision recorded in `data/audit/decisions.db` on the server.")
+
+    audit_df = load_audit(limit=500)
+
+    if audit_df.empty:
+        st.info("No decisions logged yet. Score an applicant via the API (`POST /score`) to populate this log.")
+        st.code(
+            "curl -X POST http://localhost:8001/score -H \"Content-Type: application/json\" -d '{...}'",
+            language="bash",
+        )
+    else:
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Total logged", len(audit_df))
+        c2.metric("Approved", int((audit_df["decision"] == "approve").sum()))
+        c3.metric("Rejected", int((audit_df["decision"] == "reject").sum()))
+        c4.metric("Review", int((audit_df["decision"] == "review").sum()))
+
+        col1, col2 = st.columns(2)
+        with col1:
+            fig = px.histogram(audit_df, x="probability_of_default", nbins=40,
+                               title="Distribution of predicted PD")
+            fig.add_vline(x=threshold, line_dash="dash", line_color="red", annotation_text="threshold")
+            st.plotly_chart(fig, use_container_width=True)
+        with col2:
+            dec_counts = audit_df["decision"].value_counts().reset_index()
+            dec_counts.columns = ["decision", "count"]
+            fig = px.pie(dec_counts, names="decision", values="count",
+                         title="Decision breakdown")
+            st.plotly_chart(fig, use_container_width=True)
+
+        st.subheader("Recent decisions")
+        st.dataframe(
+            audit_df[["timestamp", "request_id", "probability_of_default", "decision", "model_version"]],
+            use_container_width=True,
+            hide_index=True,
+        )
